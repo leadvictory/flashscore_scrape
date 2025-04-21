@@ -10,10 +10,12 @@ league_urls = [
     "https://www.flashscore.co.uk/football/spain/laliga/",
     "https://www.flashscore.co.uk/football/netherlands/eredivisie/",
     "https://www.flashscore.co.uk/football/portugal/liga-portugal/",
-    "https://www.flashscore.co.uk/football/brazil/serie-a/",
     "https://www.flashscore.co.uk/football/norway/eliteserien/",
     "https://www.flashscore.co.uk/football/sweden/allsvenskan/",
     "https://www.flashscore.co.uk/football/usa/mls/",
+    "https://www.flashscore.co.uk/football/europe/champions-league/",
+    "https://www.flashscore.co.uk/football/europe/europa-league/",
+    "https://www.flashscore.co.uk/football/europe/europa-conference-league/",
 ]
 
 league_urls = sorted(list(set(league_urls)))
@@ -42,8 +44,9 @@ options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_experimental_option("excludeSwitches", ["enable-automation"])
 options.add_experimental_option("useAutomationExtension", False)
-
-
+options.add_argument("--log-level=3")  
+options.add_experimental_option("excludeSwitches", ["enable-logging"]) 
+service = Service(log_path='NUL')
 #################################### FETCH DATA #########################################
 def create_driver():
     return webdriver.Chrome(
@@ -92,10 +95,10 @@ def get_matches_from_tables(soup_list):
     return match_urls
 
 
-def get_matches_per_season(urls, index=1):
+def get_matches_per_season(urls, index=0):
     soup_list = []
     all_match_urls = []  # This will accumulate all match URLs
-    print(f"index: {index}")
+    # print(f"index: {index}")
     # for url in urls:  # Iterate over all URLs
     for url in urls:
         try:
@@ -103,16 +106,16 @@ def get_matches_per_season(urls, index=1):
             driver = create_driver()
             driver.get(url)
 
-            # Attempt to find the "Show more matches" button and click it until it is no longer found
-            element = driver.find_elements(By.LINK_TEXT, "Show more matches")[index]
-            while element:
-                driver.execute_script("arguments[0].click();", element)
-                print(f" [!] Pausing to load the page contents")
-                sleep(2)
-                try:
-                    element = driver.find_elements(By.LINK_TEXT, "Show more matches")[index]
-                except:
-                    break  # Exit loop if the button is no longer found
+            while True:
+                elements = driver.find_elements(By.LINK_TEXT, "Show more matches")
+                # print(len(elements))
+                if len(elements) > index:
+                    element = elements[index]
+                    driver.execute_script("arguments[0].click();", element)
+                    print(f" [!] Pausing to load the page contents")
+                    sleep(2)
+                else:
+                    break  # No more buttons to click
 
         except Exception as e:
             print(f' [-] Warning: Could not process URL: {url} - {e}')
@@ -147,8 +150,8 @@ def match_summary(urls: list):
                 )
             )
             soup = create_soup(driver.page_source)
+            # print(soup)
             js = create_js(soup, url)
-            # print('-' * 100)
             tmp_js1 = craft_js()
             tmp_js = {**tmp_js1, **js}
             data.append(tmp_js)
@@ -299,52 +302,78 @@ def craft_js():
 
 
 def create_js(soup, url):
-    js = {}
-    js["_id"] = url.split("/")[-4]
-    js["date"] = soup.find(class_="duelParticipant__startTime").find("div").text
-    js["tournament"] = "_".join(
-        soup.find(class_="tournamentHeader__country")
-        .find("a")
-        .get("href")
-        .split("/")[2:-1]
-    )
-    js["home_team"] = soup.find(class_="duelParticipant__home").text
-    js["away_team"] = soup.find(class_="duelParticipant__away").text
-    score = [y.text for y in soup.find(class_="detailScore__wrapper").find_all("span")]
-    js["home_goals"] = score[0]
-    js["away_goals"] = score[-1]
-
-    section = soup.find(class_="smv__verticalSections section")
-    home = section.find_all(class_="smv__homeParticipant")
-    away = section.find_all(class_="smv__awayParticipant")
-    home_data = incident_time("H", home, url)
-    away_data = incident_time("A", away, url)
-    h_inc = ["H_G", "H_Y", "H_R", "H_YR"]
-    a_inc = ["A_G", "A_Y", "A_R", "A_YR"]
-
-    for T1, T2 in zip(h_inc, a_inc):
-        js.update(add_counter(home_data, T1))
-        js.update(add_counter(away_data, T2))
-
     try:
-        name_detils = soup.find(class_="wclDetailSection").find_all("strong")
-        j = 0
-        end_details = soup.find(class_="wclDetailSection").find_all("span")
-        for i, x in enumerate(end_details):
-            if x.text.strip() == "Referee:":
-                js["Referee"] = name_detils[j].text.strip()
-                j = j + 1
-            if x.text.strip() == "Venue:":
-                js["Venue"] = name_detils[j].text.strip()
-                j = j + 1
-            if x.text.strip() == "Attendance:":
-                js["Attendance"] = name_detils[j].text.strip()
-                j = j + 1
-    except:
-        print(f" No additional match details.", end="\r")
+        js = {}
+        js["_id"] = url.split("/")[-4]
+
+        # Date
+        start_time = soup.find(class_="duelParticipant__startTime")
+        date_div = start_time.find("div") if start_time else None
+        js["date"] = date_div.text.strip() if date_div else ""
+
+        # Tournament
+        breadcrumb_links = soup.select("nav[data-testid='wcl-breadcrumbs'] a")
+
+        tournament_link = ""
+        for link in reversed(breadcrumb_links):
+            href = link.get("href", "")
+            if href.startswith("/football/") and len(href.strip("/").split("/")) >= 3:
+                parts = href.strip("/").split("/")
+                tournament_link = "_".join(parts[1:3]) 
+                break
+
+        js["tournament"] = tournament_link
+
+        # Teams
+        home_team = soup.find(class_="duelParticipant__home")
+        away_team = soup.find(class_="duelParticipant__away")
+        js["home_team"] = home_team.text.strip() if home_team else ""
+        js["away_team"] = away_team.text.strip() if away_team else ""
+
+        # Score
+        score_wrapper = soup.find(class_="detailScore__wrapper")
+        scores = score_wrapper.find_all("span") if score_wrapper else []
+        js["home_goals"] = scores[0].text if len(scores) > 0 else ""
+        js["away_goals"] = scores[-1].text if len(scores) > 1 else ""
+
+        # Incidents
+        section = soup.find(class_="smv__verticalSections section")
+        if section:
+            home = section.find_all(class_="smv__homeParticipant")
+            away = section.find_all(class_="smv__awayParticipant")
+            home_data = incident_time("H", home, url)
+            away_data = incident_time("A", away, url)
+            h_inc = ["H_G", "H_Y", "H_R", "H_YR"]
+            a_inc = ["A_G", "A_Y", "A_R", "A_YR"]
+            for T1, T2 in zip(h_inc, a_inc):
+                js.update(add_counter(home_data, T1))
+                js.update(add_counter(away_data, T2))
+
+        # Match details
+        try:
+            details = soup.find(class_="wclDetailSection")
+            name_details = details.find_all("strong") if details else []
+            end_details = details.find_all("span") if details else []
+            j = 0
+            for x in end_details:
+                label = x.text.strip()
+                if label == "Referee:" and j < len(name_details):
+                    js["Referee"] = name_details[j].text.strip()
+                    j += 1
+                elif label == "Venue:" and j < len(name_details):
+                    js["Venue"] = name_details[j].text.strip()
+                    j += 1
+                elif label == "Attendance:" and j < len(name_details):
+                    js["Attendance"] = name_details[j].text.strip()
+                    j += 1
+        except Exception as e:
+            print(f"No additional match details: {e}", end="\r")
+
         return js
 
-    return js
+    except Exception as e:
+        print(f"create_js error: {e}")
+        return {}
 
 
 #################################### WRITE DATA #########################################
