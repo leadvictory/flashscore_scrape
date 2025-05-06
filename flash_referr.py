@@ -13,6 +13,7 @@ league_urls = [
     "https://www.flashscore.co.uk/football/norway/eliteserien/",
     "https://www.flashscore.co.uk/football/sweden/allsvenskan/",
     "https://www.flashscore.co.uk/football/usa/mls/",
+    "https://www.flashscore.co.uk/football/japan/j1-league/",
     "https://www.flashscore.co.uk/football/europe/champions-league/",
     "https://www.flashscore.co.uk/football/europe/europa-league/",
     "https://www.flashscore.co.uk/football/europe/europa-conference-league/",
@@ -143,16 +144,14 @@ def match_summary(urls: list):
         for nb, url in enumerate(urls, 1):
             t1_start = perf_counter()
             driver.get(url)
-            sleep(3)
+            sleep(1)
             WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located(
                     (By.CLASS_NAME, "smv__verticalSections.section")
                 )
             )
             soup = create_soup(driver.page_source)
-            print(soup)
-            with open("page.html", "w", encoding="utf-8") as f:
-                f.write(str(soup))
+            # print(soup)
             js = create_js(soup, url)
             tmp_js1 = craft_js()
             tmp_js = {**tmp_js1, **js}
@@ -171,6 +170,8 @@ def match_summary(urls: list):
 #################################### XTRACT DATA #########################################
 def find_incident(svg_class, svg_data_testid, data, team, url):
     if "wcl-icon-soccer" in svg_data_testid:
+        res = team + "_G"
+    if "wcl-icon-incidents-penalty-goal" in svg_data_testid:
         res = team + "_G"
     if "yellowCard-ico" in svg_class:
         res = team + "_Y"
@@ -305,7 +306,6 @@ def craft_js():
 
 def create_js(soup, url):
     try:
-        print("createsdfsdf")
         js = {}
         js["_id"] = url.split("/")[-4]
 
@@ -354,9 +354,9 @@ def create_js(soup, url):
 
         # Match details
         try:
-            print("here")
+            # print("here")
             label_divs = soup.find_all("span", class_="wcl-infoLabel_t7Ew6", string=["Referee:", "Venue:", "Attendance:"])
-            print(len(label_divs))
+            # print(len(label_divs))
             for label in label_divs:
                 key = label.text.strip().replace(":", "")
                 print(key)
