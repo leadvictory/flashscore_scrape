@@ -353,13 +353,20 @@ def create_js(soup, url):
                     # The value is in the next sibling div with class "wcl-infoValue_grawU"
                     value_div = parent.find_next_sibling("div", class_="wcl-infoValue_grawU")
                     if value_div:
-                        # Take strong text if exists, else full text
-                        strong = value_div.find("strong")
-                        if strong:
-                            value_text = strong.text.strip()
+                        if key == "Referee":
+                            # Referee name is always the FIRST span
+                            first_span = value_div.find("span")
+                            if first_span:
+                                value_text = first_span.get_text(strip=True)
+                            else:
+                                value_text = value_div.get_text(strip=True)
                         else:
-                            value_text = value_div.get_text(strip=True)
-                        # print(value_text)
+                            strong = value_div.find("strong")
+                            if strong:
+                                value_text = strong.text.strip()
+                            else:
+                                value_text = value_div.get_text(strip=True)
+
                         js[key] = value_text
         except Exception as e:
             print(f"No additional match details: {e}", end="\r")
