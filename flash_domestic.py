@@ -164,7 +164,7 @@ def find_incident(svg_class, svg_data_testid, data, team, url):
         res = team + "_Y"
     if "redCard-ico" in svg_class:
         res = team + "_R"
-    if ["card-ico"] == svg_class:
+    if "wcl-icon-incidents-red-card-second" in svg_data_testid:
         res = team + "_YR"
     try:
         return res
